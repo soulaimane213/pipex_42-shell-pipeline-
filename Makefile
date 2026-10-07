@@ -1,11 +1,14 @@
+CC     = gcc
+CFLAGS = -Wall -Wextra -g
+SRCS   = main.c utils.c
+NAME   = pipex
 
-srcs = main.c pipex.h utils.c
-output = pipex
+all: $(NAME)
 
-
-all:
-	gcc -g $(srcs) -o $(output)
+$(NAME): $(SRCS) pipex.h
+	$(CC) $(CFLAGS) $(SRCS) -o $(NAME)
 
 clean:
-	rm -f $(output)
+	rm -f $(NAME) a.out pipex.h.gch
 
+.PHONY: all clean

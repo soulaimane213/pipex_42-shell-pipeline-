@@ -1,43 +1,97 @@
-# pipex - shell pipeline rebuilt in C
+# pipex — Shell Pipeline Rebuilt in C
 
-a from scratch implementation of the shell pipe `|` behavior in C , using `fork` , `pipe` , `dup2` , and `execve`
+A from-scratch implementation of the Unix shell pipeline (`< infile cmd1 | cmd2 > outfile`) written in **pure C**.
 
-## what it does
+This project re-creates the behavior of shell pipes, process forking, file descriptor redirection, and dynamic path resolution using low-level POSIX system calls (`pipe`, `fork`, `dup2`, `execve`, `waitpid`).
 
-takes an input file , two shell commands , and an output file , runs them like this :
+---
+
+## 📹 Video Walkthrough
+
+Watch the full live development and architecture breakdown on YouTube:
+
+[![Watch on YouTube](https://img.shields.io/badge/YouTube-Watch%20Live%20Stream-red?style=for-the-badge&logo=youtube)](https://www.youtube.com/watch?v=VWbcyg62uqg)
+
+---
+
+## 📂 Project Structure
+
+```
+pipex/
+├── Makefile       # Multi-file build system with optimization flags
+├── README.md
+├── pipex.h        # Function prototypes and system headers
+├── main.c         # Process forking, pipe redirection, and lifecycle management
+└── utils.c        # Custom string splitting (ft_split) and PATH resolution
+```
+
+---
+
+## ⚙️ How It Works (Pipeline Architecture)
+
+Running `./pipex infile "cmd1" "cmd2" outfile` behaves identically to `< infile cmd1 | cmd2 > outfile`:
+
+```
+                 +-------------------+
+  infile ------->|   Child 1 (cmd1)  |
+ (STDIN)         +---------+---------+
+                           |
+                        (STDOUT)
+                           |
+                     [ PIPE BUFFER ]
+                           |
+                        (STDIN)
+                           |
+                 +---------+---------+
+                 |   Child 2 (cmd2)  |--------> outfile
+                 +-------------------+         (STDOUT)
+```
+
+1. **`pipe(p)`**: Creates an unidirectional kernel buffer (`p[0]` = read, `p[1]` = write).
+2. **Child 1:** Redirects `infile` to `STDIN` and `p[1]` to `STDOUT`, then executes `cmd1`.
+3. **Child 2:** Redirects `p[0]` to `STDIN` and `outfile` to `STDOUT`, then executes `cmd2`.
+4. **Concurrent Execution:** Both processes run simultaneously in parallel.
+5. **Parent:** Closes both pipe ends and reaps the children using `waitpid()`.
+
+---
+
+## 🛠️ Build & Run
+
+### Compilation
 
 ```bash
-< infile cmd1 | cmd2 > outfile
+make
 ```
 
-basically the same thing as doing that in your shell , but built manually
+### Examples
 
-## how it works
-
-- opens the input file and creates a pipe
-- forks a child process that runs `cmd1` with stdin from the file and stdout into the pipe
-- the parent waits , then runs `cmd2` with stdin from the pipe and stdout into the output file
-- path resolution is done manually by parsing the `PATH` environment variable
-
-## watch the explanation
-
-i built this live step by step in this video :
-
-[![Watch on YouTube](https://img.shields.io/badge/YouTube-Watch-red?logo=youtube)](https://www.youtube.com/watch?v=VWbcyg62uqg&t=7820s)
-
-## build & run
-
+#### 1. Filter and count lines
 ```bash
-gcc main.c utils.c -o pipex
-./pipex infile "ls -la" "grep .c" outfile
+./pipex infile "cat" "wc -l" outfile
+# Equivalent to: < infile cat | wc -l > outfile
 ```
 
-## usage
-
+#### 2. Search and sort
+```bash
+./pipex infile "grep error" "sort -r" outfile
+# Equivalent to: < infile grep error | sort -r > outfile
 ```
-./pipex infile 'cmd1' 'cmd2' outfile
-```
 
-## channel
+---
 
-[@Zero2Segfault](https://www.youtube.com/@Zero2Segfault) - low level stuff , assembly , c , systems
+## 🔬 System Calls Used
+
+| Syscall | Purpose |
+| :--- | :--- |
+| **`pipe`** | Allocate inter-process communication kernel buffer |
+| **`fork`** | Duplicate process for concurrent child execution |
+| **`dup2`** | Rebind file descriptors (`stdin` / `stdout`) |
+| **`execve`** | Replace child image with target binary |
+| **`waitpid`** | Prevent zombie processes and capture exit codes |
+
+---
+
+## 👨‍💻 Author
+
+**Soulaimane FADL**  
+YouTube: [@Zero2Segfault](https://www.youtube.com/@Zero2Segfault)

@@ -1,175 +1,105 @@
 #include "pipex.h"
 
+static void execute_command(char *cmd_str, char **envp) {
+    char **cmd = ft_split(cmd_str, ' ');
+    if (!cmd || !cmd[0] || cmd[0][0] == '\0') {
+        fprintf(stderr, "pipex: command not found: %s\n", cmd_str);
+        exit(127);
+    }
 
-int main(int ac , char **av , char **envp){
+    char *path = NULL;
+    if (cmd[0][0] == '/' || (cmd[0][0] == '.' && cmd[0][1] == '/')) {
+        path = cmd[0];
+    } else {
+        path = get_path(cmd[0], envp);
+        if (!path) {
+            fprintf(stderr, "pipex: command not found: %s\n", cmd[0]);
+            exit(127);
+        }
+    }
 
-	int p[2];
-	int fd;
-	size_t bytes;
-	char buffer[BUFFER_SIZE];
-	pid_t pid; 
-	char **cmd = NULL;
-	char *path = NULL;
-	int saved_stdout;
-
-
-	// first we will check if the arg == 5 or not 
-	
-	if(ac == 5){
-	
-		// first we will open the file and check that there
-		// is no probleme
-		fd = open(av[1] , O_RDWR , 0);
-		if(fd < 0){
-			perror(av[1]);
-			return 1;
-		}
-		
-		// now we need to create the pipe;
-		if(pipe(p) < 0){
-			perror("pipe");
-			return 1;
-		}
-		
-		pid_t pid = fork();
-		
-		if(pid < 0){
-			perror("fork");
-			return 1;
-		}
-
-
-		if(pid == 0){
-			// close the read pipe becuase we dont need it here bruuh;
-			close(p[0]);
-			
-			saved_stdout = dup(1);
-			
-			// make the stdin point to the opne fd file descriptor;	
-			dup2(fd ,0);
-			
-			// and make the the stdout point to the fd[1] pipe
-			dup2(p[1] , 1);
-
-
-           		//dup2(saved_stdout , 1);
-
-
-			// then here we need to split the command into array of pointers;
-			cmd = ft_split(av[2] , ' ');
-			if(cmd == NULL || !cmd[0] || cmd[0][0] == 0){
-				dup2(saved_stdout , 1);
-				printf("command not found: :( \n");
-				return -1;
-			}	
-	
-
-
-			// then here we need to check the first arg is 
-			// it available in the path or no
-			
-			if(cmd[0][0] == '/' || (cmd[0][0] == '.' && cmd[0][1] == '/')){
-				path = cmd[0];
-			}else {
-				
-				path = get_path(cmd[0] , envp);	
-				if(path == NULL){
-					dup2(saved_stdout , 1);
-					printf("command not found: %s :( \n" , cmd[0]);
-					return -1;
-				}
-			}
-
-			// then here executed with execve();
-			execve(path , cmd , envp);
-			perror("execve:");
-
-			// then close the fd[1];
-			close(saved_stdout);
-
-
-		}else {
-			close(p[1]);	
-			wait(NULL);
-
-			// first we ned to maeke the stdin points to the fd of fd[1]
-			dup2(p[0] , 0);
-
-			// and now we need to open the file / create it if its not exist
-			fd = open(av[4] ,O_WRONLY | O_CREAT , 0644);
-				if(fd < 0){
-				perror("open");
-				return 1;
-			}
-		
-
-			// then here we need to make the the stdout point also to the 
-		
-			// save the stdout
-			saved_stdout = dup(1);
-
-			// open file descriptor
-			dup2(fd , 1);
-
-
-
-			// now we will execute the second command  normally;
-
-			// then here we need to split the command into array of pointers;
-			cmd = ft_split(av[3] , ' ');
-		
-			if(cmd == NULL || !cmd[0] || cmd[0][0] == 0){
-				dup2(saved_stdout , 1);
-				printf("command not found: :( \n");
-				return -1;
-			}	
-	
-
-			// then here we need to check the first arg is 
-			// it available in the path or no
-			
-			if(cmd[0][0] == '/' || (cmd[0][0] == '.' && cmd[0][1] == '/')){
-			
-				path = cmd[0];
-			
-			}else {
-				
-				path = get_path(cmd[0] , envp);	
-				if(path == NULL){
-					dup2(saved_stdout , 1);
-					printf("command not found: %s :( \n" , cmd[0]);
-					return -1;
-				}
-			}
-
-
-			
-
-
-
-
-			// then here executed with execve();
-			execve(path , cmd , envp);
-			perror("execve:");
-
-
-			close(p[0]);
-	
-
-		}
-
-	}else {
-		printf("Usage: ./pipex infile 'cmd_1' 'cmd_2' outfile\n");
-		return 1;
-	}
-
-
-
-
-	close(p[1]);
-	close(p[0]);
-	close(fd);
-
+    if (execve(path, cmd, envp) == -1) {
+        perror("pipex: execve error");
+        exit(127);
+    }
 }
 
+int main(int ac, char **av, char **envp) {
+    if (ac != 5) {
+        fprintf(stderr, "Usage: ./pipex <infile> <cmd1> <cmd2> <outfile>\n");
+        return 1;
+    }
 
+    int p[2];
+    if (pipe(p) < 0) {
+        perror("pipex: pipe error");
+        return 1;
+    }
+
+    // Fork Child 1 for cmd1: reads from infile, writes to pipe
+    pid_t pid1 = fork();
+    if (pid1 < 0) {
+        perror("pipex: fork error");
+        return 1;
+    }
+
+    if (pid1 == 0) {
+        // Child 1
+        close(p[0]); // Close unused read end
+
+        // Open infile in read-only mode
+        int fd_in = open(av[1], O_RDONLY);
+        if (fd_in < 0) {
+            perror(av[1]);
+            close(p[1]);
+            exit(1);
+        }
+
+        dup2(fd_in, STDIN_FILENO);
+        dup2(p[1], STDOUT_FILENO);
+        close(fd_in);
+        close(p[1]);
+
+        execute_command(av[2], envp);
+    }
+
+    // Fork Child 2 for cmd2: reads from pipe, writes to outfile (Concurrent execution)
+    pid_t pid2 = fork();
+    if (pid2 < 0) {
+        perror("pipex: fork error");
+        return 1;
+    }
+
+    if (pid2 == 0) {
+        // Child 2
+        close(p[1]); // Close unused write end
+
+        // Open/create outfile with O_TRUNC
+        int fd_out = open(av[4], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd_out < 0) {
+            perror(av[4]);
+            close(p[0]);
+            exit(1);
+        }
+
+        dup2(p[0], STDIN_FILENO);
+        dup2(fd_out, STDOUT_FILENO);
+        close(p[0]);
+        close(fd_out);
+
+        execute_command(av[3], envp);
+    }
+
+    // Parent: close both pipe ends and wait for both children
+    close(p[0]);
+    close(p[1]);
+
+    int status = 0;
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, &status, 0);
+
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    return 0;
+}
